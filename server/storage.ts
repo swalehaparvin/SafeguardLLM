@@ -3,7 +3,7 @@ import {
   type User, type InsertUser, type LlmModel, type InsertLlmModel,
   type TestSuite, type InsertTestSuite, type TestCase, type InsertTestCase,
   type Evaluation, type InsertEvaluation, type EvaluationResult, type InsertEvaluationResult
-} from "@shared/schema";
+} from "../shared/schema";
 import { desc } from "drizzle-orm";
 
 export interface IStorage {
@@ -42,7 +42,7 @@ export interface IStorage {
   getEvaluationResultsByEvaluationId(evaluationId: number): Promise<EvaluationResult[]>;
   getRecentEvaluationResults(limit?: number): Promise<EvaluationResult[]>;
   getEvaluationResultsByModel(modelId: string, limit?: number): Promise<EvaluationResult[]>;
-  
+
   // Pagination operations
   getTotalEvaluationResultsCount(): Promise<number>;
   getEvaluationResultsPaginated(params: {
@@ -63,7 +63,7 @@ export class MemStorage implements IStorage {
   private testCases: Map<number, TestCase>;
   private evaluations: Map<number, Evaluation>;
   private evaluationResults: Map<number, EvaluationResult>;
-  
+
   private currentUserId: number;
   private currentLlmModelId: number;
   private currentTestSuiteId: number;
@@ -78,7 +78,7 @@ export class MemStorage implements IStorage {
     this.testCases = new Map();
     this.evaluations = new Map();
     this.evaluationResults = new Map();
-    
+
     this.currentUserId = 1;
     this.currentLlmModelId = 1;
     this.currentTestSuiteId = 1;
@@ -92,10 +92,48 @@ export class MemStorage implements IStorage {
   private initializeDefaultData() {
     // Initialize default models
     const defaultModels = [
-      { modelId: "gpt-4o", provider: "openai", name: "GPT-4o", description: "Latest OpenAI model" },
+      // Existing OpenAI models
+      { modelId: "gpt-4o", provider: "openai", name: "GPT-4o", description: "Latest OpenAI model (May 2024)" },
       { modelId: "gpt-3.5-turbo", provider: "openai", name: "GPT-3.5 Turbo", description: "OpenAI GPT-3.5 Turbo" },
-      { modelId: "claude-sonnet-4-20250514", provider: "anthropic", name: "Claude Sonnet 4", description: "Latest Anthropic model" },
-      { modelId: "claude-3-haiku-20240307", provider: "anthropic", name: "Claude 3 Haiku", description: "Anthropic Claude 3 Haiku" }
+
+      // NEW: GPT-5 Models
+      { modelId: "gpt-5", provider: "openai", name: "GPT-5", description: "OpenAI GPT-5 (August 2025)" },
+      { modelId: "gpt-5-mini", provider: "openai", name: "GPT-5 Mini", description: "Lightweight GPT-5 variant" },
+
+      // Existing Anthropic models
+      { modelId: "claude-sonnet-4-20250514", provider: "anthropic", name: "Claude Sonnet 4", description: "Latest Anthropic model (May 2025)" },
+      { modelId: "claude-3-haiku-20240307", provider: "anthropic", name: "Claude 3 Haiku", description: "Anthropic Claude 3 Haiku" },
+
+      // NEW: Claude Opus 4.5
+      { modelId: "claude-opus-4-5-20251101", provider: "anthropic", name: "Claude Opus 4.5", description: "Most powerful Anthropic model (Nov 2025)" },
+
+      // NEW: Deepseek Models
+      { modelId: "deepseek-chat", provider: "deepseek", name: "Deepseek Chat", description: "Deepseek conversational model" },
+      { modelId: "deepseek-coder", provider: "deepseek", name: "Deepseek Coder", description: "Deepseek code-specialized model" },
+      { modelId: "deepseek-v3", provider: "deepseek", name: "Deepseek V3", description: "Latest Deepseek V3 model (Dec 2024)" },
+
+      // NEW: Gemini Models
+      { modelId: "gemini-2.0-flash-exp", provider: "google", name: "Gemini 2.0 Flash", description: "Google Gemini 2.0 experimental" },
+      { modelId: "gemini-3-pro-preview", provider: "google", name: "Gemini 3 Pro", description: "Google Gemini 3 Pro (Preview - Nov 2025)" },
+
+      // NEW: Mistral Models (via OpenRouter)
+      { modelId: "mistralai/mistral-large-latest", provider: "mistral", name: "Mistral Large", description: "Mistral's most capable model (via OpenRouter)" },
+      { modelId: "mistralai/mistral-medium-latest", provider: "mistral", name: "Mistral Medium", description: "Balanced performance and speed (via OpenRouter)" },
+      { modelId: "mistralai/mistral-small-latest", provider: "mistral", name: "Mistral Small", description: "Fast and efficient Mistral model (via OpenRouter)" },
+
+      // NEW: Grok Models (via OpenRouter)
+      { modelId: "x-ai/grok-beta", provider: "grok", name: "Grok Beta", description: "xAI Grok beta model (via OpenRouter)" },
+      { modelId: "x-ai/grok-2-latest", provider: "grok", name: "Grok 2", description: "Latest xAI Grok 2 model (via OpenRouter)" },
+
+      // NEW: Llama Models (via OpenRouter)
+      { modelId: "meta-llama/llama-3.3-70b-instruct", provider: "llama", name: "Llama 3.3 70B Instruct", description: "Meta's latest Llama 3.3 70B model (via OpenRouter)" },
+      { modelId: "meta-llama/llama-3.1-405b-instruct", provider: "llama", name: "Llama 3.1 405B Instruct", description: "Meta's largest Llama 3.1 405B model (via OpenRouter)" },
+      { modelId: "meta-llama/llama-3.1-70b-instruct", provider: "llama", name: "Llama 3.1 70B Instruct", description: "Meta Llama 3.1 70B model (via OpenRouter)" },
+
+      // NEW: Cohere Models (via OpenRouter)
+      { modelId: "cohere/command-r-plus", provider: "cohere", name: "Command R+", description: "Cohere's most powerful model (via OpenRouter)" },
+      { modelId: "cohere/command-r", provider: "cohere", name: "Command R", description: "Cohere Command R model (via OpenRouter)" },
+      { modelId: "cohere/command", provider: "cohere", name: "Command", description: "Cohere Command model (via OpenRouter)" },
     ];
 
     defaultModels.forEach(model => {
@@ -306,7 +344,7 @@ export class MemStorage implements IStorage {
         .from(evaluations)
         .orderBy(desc(evaluations.startedAt))
         .limit(limit);
-      
+
       return recentEvaluations;
     } catch (error) {
       console.error('Failed to get recent evaluations:', error);
@@ -397,9 +435,9 @@ export class MemStorage implements IStorage {
     sortOrder?: string;
   }): Promise<any[]> {
     const { offset, limit, model, testType, status } = params;
-    
+
     let results = Array.from(this.evaluationResults.values());
-    
+
     // Apply filters
     if (model) {
       results = results.filter(result => {
@@ -407,19 +445,19 @@ export class MemStorage implements IStorage {
         return evaluation?.modelId === model;
       });
     }
-    
+
     if (status) {
       const passedValue = status.toLowerCase() === 'pass';
       results = results.filter(result => result.passed === passedValue);
     }
-    
+
     // Sort by creation date (most recent first)
     results.sort((a, b) => {
       const aTime = a.createdAt?.getTime() ?? 0;
       const bTime = b.createdAt?.getTime() ?? 0;
       return bTime - aTime;
     });
-    
+
     // Apply pagination
     return results.slice(offset, offset + limit).map(result => {
       const evaluation = this.evaluations.get(result.evaluationId);
@@ -611,7 +649,7 @@ export class DatabaseStorage implements IStorage {
     sortOrder?: string;
   }): Promise<any[]> {
     const { offset, limit, model, testType, status, sortBy = 'createdAt', sortOrder = 'desc' } = params;
-    
+
     let query = db
       .select({
         id: evaluationResults.id,
