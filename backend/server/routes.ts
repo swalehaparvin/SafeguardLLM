@@ -267,17 +267,30 @@ export async function registerRoutes(app: Express): Promise<void> {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
       const offset = (page - 1) * limit;
 
-      // Get total count for pagination info
-      const totalCount = await storage.getTotalEvaluationResultsCount();
+      // Optional evaluation_id filter so the UI can scope results to a single
+      // run instead of accumulating duplicates across every evaluation ever made.
+      const evaluationIdRaw = req.query.evaluationId as string | undefined;
+      const evaluationId = evaluationIdRaw ? parseInt(evaluationIdRaw, 10) : undefined;
+      if (evaluationIdRaw && Number.isNaN(evaluationId)) {
+        return res.status(400).json({ error: "Invalid evaluationId" });
+      }
+
+      const filters = {
+        evaluationId,
+        model: req.query.model as string,
+        testType: req.query.testType as string,
+        status: req.query.status as string,
+      };
+
+      // Get total count for pagination info (scoped to the same filters)
+      const totalCount = await storage.getTotalEvaluationResultsCount(filters);
       const totalPages = Math.ceil(totalCount / limit);
 
       // Get paginated results
       const results = await storage.getEvaluationResultsPaginated({
         offset,
         limit,
-        model: req.query.model as string,
-        testType: req.query.testType as string,
-        status: req.query.status as string,
+        ...filters,
         sortBy: (req.query.sortBy as string) || "date",
         sortOrder: (req.query.sortOrder as string) || "desc",
       });

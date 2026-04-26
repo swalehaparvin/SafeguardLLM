@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -86,7 +86,10 @@ export const evaluationResults = pgTable("evaluation_results", {
   compositeScore: real("composite_score"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  evaluationTestCaseUnique: uniqueIndex("evaluation_results_evaluation_id_test_case_id_unique")
+    .on(table.evaluationId, table.testCaseId),
+}));
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
