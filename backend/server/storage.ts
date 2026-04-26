@@ -44,10 +44,16 @@ export interface IStorage {
   getEvaluationResultsByModel(modelId: string, limit?: number): Promise<EvaluationResult[]>;
 
   // Pagination operations
-  getTotalEvaluationResultsCount(): Promise<number>;
+  getTotalEvaluationResultsCount(filters?: {
+    evaluationId?: number;
+    model?: string;
+    testType?: string;
+    status?: string;
+  }): Promise<number>;
   getEvaluationResultsPaginated(params: {
     offset: number;
     limit: number;
+    evaluationId?: number;
     model?: string;
     testType?: string;
     status?: string;
@@ -421,35 +427,56 @@ export class MemStorage implements IStorage {
       .slice(0, limit);
   }
 
-  async getTotalEvaluationResultsCount(): Promise<number> {
-    return this.evaluationResults.size;
+  async getTotalEvaluationResultsCount(filters?: {
+    evaluationId?: number;
+    model?: string;
+    testType?: string;
+    status?: string;
+  }): Promise<number> {
+    if (!filters) return this.evaluationResults.size;
+    return this.filterMemResults(filters).length;
+  }
+
+  private filterMemResults(filters: {
+    evaluationId?: number;
+    model?: string;
+    testType?: string;
+    status?: string;
+  }): EvaluationResult[] {
+    let results = Array.from(this.evaluationResults.values());
+
+    if (filters.evaluationId !== undefined) {
+      results = results.filter(r => r.evaluationId === filters.evaluationId);
+    }
+
+    if (filters.model) {
+      results = results.filter(result => {
+        const evaluation = this.evaluations.get(result.evaluationId!);
+        return evaluation?.modelId === filters.model;
+      });
+    }
+
+    if (filters.status) {
+      const passedValue = filters.status.toLowerCase() === 'pass';
+      results = results.filter(result => result.passed === passedValue);
+    }
+
+    return results;
   }
 
   async getEvaluationResultsPaginated(params: {
     offset: number;
     limit: number;
+    evaluationId?: number;
     model?: string;
     testType?: string;
     status?: string;
     sortBy?: string;
     sortOrder?: string;
   }): Promise<any[]> {
-    const { offset, limit, model, testType, status } = params;
+    const { offset, limit, evaluationId, model, testType, status } = params;
 
-    let results = Array.from(this.evaluationResults.values());
-
-    // Apply filters
-    if (model) {
-      results = results.filter(result => {
-        const evaluation = this.evaluations.get(result.evaluationId);
-        return evaluation?.modelId === model;
-      });
-    }
-
-    if (status) {
-      const passedValue = status.toLowerCase() === 'pass';
-      results = results.filter(result => result.passed === passedValue);
-    }
+    let results = this.filterMemResults({ evaluationId, model, testType, status });
 
     // Sort by creation date (most recent first)
     results.sort((a, b) => {
@@ -634,25 +661,61 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async getTotalEvaluationResultsCount(): Promise<number> {
-    const [result] = await db.select({ count: count() }).from(evaluationResults);
+  async getTotalEvaluationResultsCount(filters?: {
+    evaluationId?: number;
+    model?: string;
+    testType?: string;
+    status?: string;
+  }): Promise<number> {
+    if (!filters || (!filters.evaluationId && !filters.model && !filters.testType && !filters.status)) {
+      const [result] = await db.select({ count: count() }).from(evaluationResults);
+      return result.count;
+    }
+
+    let query = db
+      .select({ count: count() })
+      .from(evaluationResults)
+      .leftJoin(evaluations, eq(evaluationResults.evaluationId, evaluations.id))
+      .leftJoin(testCases, eq(evaluationResults.testCaseId, testCases.id));
+
+    const conditions = [];
+    if (filters.evaluationId !== undefined) {
+      conditions.push(eq(evaluationResults.evaluationId, filters.evaluationId));
+    }
+    if (filters.model) {
+      conditions.push(eq(evaluations.modelId, filters.model));
+    }
+    if (filters.testType) {
+      conditions.push(eq(testCases.name, filters.testType));
+    }
+    if (filters.status) {
+      const passedValue = filters.status.toLowerCase() === 'pass';
+      conditions.push(eq(evaluationResults.passed, passedValue));
+    }
+
+    const [result] = conditions.length > 0
+      ? await query.where(and(...conditions))
+      : await query;
+
     return result.count;
   }
 
   async getEvaluationResultsPaginated(params: {
     offset: number;
     limit: number;
+    evaluationId?: number;
     model?: string;
     testType?: string;
     status?: string;
     sortBy?: string;
     sortOrder?: string;
   }): Promise<any[]> {
-    const { offset, limit, model, testType, status, sortBy = 'createdAt', sortOrder = 'desc' } = params;
+    const { offset, limit, evaluationId, model, testType, status, sortBy = 'createdAt', sortOrder = 'desc' } = params;
 
     let query = db
       .select({
         id: evaluationResults.id,
+        evaluationId: evaluationResults.evaluationId,
         passed: evaluationResults.passed,
         vulnerabilityScore: evaluationResults.vulnerabilityScore,
         attackComplexity: evaluationResults.attackComplexity,
@@ -676,6 +739,9 @@ export class DatabaseStorage implements IStorage {
 
     // Apply filters
     const conditions = [];
+    if (evaluationId !== undefined) {
+      conditions.push(eq(evaluationResults.evaluationId, evaluationId));
+    }
     if (model) {
       conditions.push(eq(evaluations.modelId, model));
     }
